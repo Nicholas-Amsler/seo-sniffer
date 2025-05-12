@@ -1,0 +1,45 @@
+const express = require('express');
+const axios   = require('axios');
+const cheerio = require('cheerio');
+const cors    = require('cors');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use(express.static('public'));
+
+// API route: /api/sniff?url=https://example.com
+app.get('/api/sniff', async (req, res) => {
+  const target = req.query.url;
+  if (!target) return res.status(400).json({ error: 'Missing url param' });
+
+  try {
+    const { data: html } = await axios.get(target, { timeout: 5000 });
+    const $ = cheerio.load(html);
+
+    const title = $('head > title').text() || null;
+    const metas = {};
+    $('head meta').each((i, el) => {
+      const name = $(el).attr('name') || $(el).attr('property');
+      const content = $(el).attr('content');
+      if (name && content) metas[name] = content;
+    });
+
+    const headings = {};
+    ['h1','h2','h3','h4','h5','h6'].forEach(tag => {
+      headings[tag] = $(tag).map((i, el) => $(el).text().trim()).get();
+    });
+
+    const images = $('img').map((i, el) => ({
+      src: $(el).attr('src'),
+      alt: $(el).attr('alt') || ''
+    })).get();
+
+    res.json({ title, metas, headings, images });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch or parse URL.' });
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Listening on http://localhost:${PORT}`));
